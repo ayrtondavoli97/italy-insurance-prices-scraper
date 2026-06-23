@@ -6,8 +6,8 @@
       "transformation": {
         "fields": [
           "level", "provincia", "sigla", "regione", "macroarea", "area",
-          "vehicleType", "premioMedio", "variazioneAnnua",
-          "premioMin", "premioMax", "provinceCount",
+          "vehicleType", "premioMedio", "variazioneAnnua", "numContratti",
+          "p50", "cv", "premioMin", "premioMax", "provinceCount",
           "period", "periodType", "source", "publicationDate", "sourceFile"
         ]
       },
@@ -22,7 +22,10 @@
           "area": { "label": "Area" },
           "vehicleType": { "label": "Vehicle" },
           "premioMedio": { "label": "Avg premium (€)" },
-          "variazioneAnnua": { "label": "YoY change" },
+          "variazioneAnnua": { "label": "YoY change %" },
+          "numContratti": { "label": "# contracts" },
+          "p50": { "label": "Median (€)" },
+          "cv": { "label": "C.v. %" },
           "premioMin": { "label": "Min (€)" },
           "premioMax": { "label": "Max (€)" },
           "provinceCount": { "label": "# provinces" },

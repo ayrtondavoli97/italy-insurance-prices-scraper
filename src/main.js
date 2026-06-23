@@ -3,9 +3,8 @@ import { CheerioCrawler, log } from 'crawlee';
 import { gotScraping } from 'got-scraping';
 
 import { SOURCES, archiveUrl, extractDetailLinks, extractDetail } from './ivass.js';
-import { parseTavoleWorkbook } from './parser.js';
+import { parseIvassWorkbook } from './parser.js';
 import {
-  buildRegionalAggregates,
   buildMacroareaAggregates,
   buildNationalAggregates,
 } from './aggregate.js';
@@ -110,19 +109,21 @@ const crawler = new CheerioCrawler({
       throw err; // let Crawlee retry
     }
 
-    const raw = parseTavoleWorkbook(buffer);
-    const errors = raw.filter((r) => r._error);
-    const provinceRecords = raw.filter((r) => !r._error && vehicleSet.has(r.vehicleType));
+    const raw = parseIvassWorkbook(buffer);
+    const provinceRecords = raw.province.filter((r) => vehicleSet.has(r.vehicleType));
+    const regionRecords = raw.regione.filter((r) => vehicleSet.has(r.vehicleType));
 
-    if (!provinceRecords.length) {
-      log.warning(`Parsed 0 province records from ${tavole.url} (sheets may have an unexpected layout)`);
+    if (!provinceRecords.length && !regionRecords.length) {
+      log.warning(`Parsed 0 geographic records from ${tavole.url} (unexpected layout)`);
       return;
     }
 
+    // The workbook carries the authoritative period; fall back to the detail page.
+    const filePeriod = provinceRecords[0]?.period || regionRecords[0]?.period;
     const meta = {
-      period: detail.period,
-      periodType: detail.periodType,
-      refYear: detail.refYear,
+      period: filePeriod || detail.period,
+      periodType: provinceRecords[0]?.periodType || detail.periodType,
+      refYear: provinceRecords[0]?.refYear || detail.refYear,
       source: source.toUpperCase(),
       sourceFile: tavole.url,
       publicationUrl: detail.url,
@@ -134,36 +135,23 @@ const crawler = new CheerioCrawler({
     const dataset = await Actor.openDataset();
 
     if (includeProvinceData) {
-      const rows = provinceRecords.map((r) => ({
-        level: 'provincia',
-        provincia: r.provincia,
-        sigla: r.sigla,
-        regione: r.regione,
-        macroarea: r.macroarea,
-        vehicleType: r.vehicleType,
-        metric: r.metric,
-        premioMedio: r.metric === 'premio_medio' ? r.value : null,
-        variazioneAnnua: r.metric === 'variazione_annua' ? r.value : null,
-        columnHeader: r.columnHeader,
-        ...meta,
-      }));
-      await dataset.pushData(rows);
-      state.totalProvinceRecords += rows.length;
+      await dataset.pushData(provinceRecords.map((r) => ({ ...r, ...meta })));
+      state.totalProvinceRecords += provinceRecords.length;
     }
-
-    if (includeRegionalAggregates) {
-      await dataset.pushData(buildRegionalAggregates(provinceRecords, meta));
+    if (includeRegionalAggregates && regionRecords.length) {
+      // Official IVASS contract-weighted regional figures (from the file itself).
+      await dataset.pushData(regionRecords.map((r) => ({ ...r, ...meta })));
     }
-    if (includeMacroareaAggregates) {
+    if (includeMacroareaAggregates && provinceRecords.length) {
       await dataset.pushData(buildMacroareaAggregates(provinceRecords, meta));
     }
-    if (includeNationalAggregate) {
+    if (includeNationalAggregate && provinceRecords.length) {
       await dataset.pushData(buildNationalAggregates(provinceRecords, meta));
     }
 
     state.publicationsWithData += 1;
-    log.info(`✔ ${detail.title} [${detail.period}] → ${provinceRecords.length} province values`
-      + (errors.length ? ` (${errors.length} sheet errors)` : ''));
+    log.info(`✔ ${detail.title} [${meta.period}] → `
+      + `${provinceRecords.length} province + ${regionRecords.length} region records`);
   },
 
   failedRequestHandler({ request }, err) {

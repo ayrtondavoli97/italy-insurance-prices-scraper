@@ -1,97 +1,59 @@
 import * as XLSX from 'xlsx';
-import { parseTavoleWorkbook, toNumber } from '../src/parser.js';
-import {
-  buildRegionalAggregates,
-  buildNationalAggregates,
-  buildMacroareaAggregates,
-} from '../src/aggregate.js';
-import { resolveProvince, PROVINCE_COUNT } from '../src/provinces.js';
+import { parseIvassWorkbook, toNumber, normalizePeriodCell } from '../src/parser.js';
+import { buildMacroareaAggregates, buildNationalAggregates } from '../src/aggregate.js';
+import { resolveProvinceAny, resolveRegion } from '../src/provinces.js';
 
-function assert(cond, msg) {
-  if (!cond) { console.error('❌ FAIL:', msg); process.exitCode = 1; }
-  else console.log('✓', msg);
-}
+let fails = 0;
+const ok = (c, m) => { if (!c) { console.error('❌', m); fails++; } else console.log('✓', m); };
 
-// --- unit: number parsing (Italian formats) ---
-assert(toNumber('512,30') === 512.3, 'parses Italian decimal comma');
-assert(toNumber('1.234,50') === 1234.5, 'parses IT thousands dot + decimal comma');
-assert(toNumber('436.8') === 436.8, 'parses plain decimal point');
-assert(toNumber('  4,1%') === 4.1, 'strips percent and spaces');
-assert(toNumber('') === null && toNumber('n.d.') === null, 'rejects empty / non-numeric');
+ok(toNumber('512,30') === 512.3, 'IT decimal comma');
+ok(toNumber('.') === null && toNumber('') === null, 'rejects "." and empty');
+ok(normalizePeriodCell('3 trimestre/2025').period === '2025-Q3', 'period "3 trimestre/2025" -> 2025-Q3');
+ok(resolveProvinceAny('NA').regione === 'Campania', 'sigla NA -> Campania');
+ok(resolveProvinceAny('Agrigento').sigla === 'AG', 'name Agrigento -> AG');
+ok(resolveRegion('Friuli-V.G.').regione === 'Friuli-Venezia Giulia', 'region abbrev Friuli-V.G.');
+ok(resolveRegion('Emilia Romagna').macroarea === 'Nord-Est', 'region Emilia Romagna -> Nord-Est');
 
-// --- unit: province resolution ---
-assert(resolveProvince('Napoli').regione === 'Campania', 'resolves Napoli → Campania');
-assert(resolveProvince("Reggio Emilia").sigla === 'RE', 'resolves alt spelling Reggio Emilia');
-assert(resolveProvince('Forlì-Cesena').sigla === 'FC', 'resolves accented Forlì-Cesena');
-assert(resolveProvince('xyz') === null, 'rejects non-province');
-console.log(`   (province table has ${PROVINCE_COUNT} distinct provinces)`);
-
-// --- build a synthetic workbook resembling the IVASS "tavole" layout ---
-const aoa = [
-  ['Tavola 3 - Premio medio r.c. auto per provincia (euro) - IV trimestre 2025'],
-  [],
-  ['Provincia', 'Premio medio autovetture', 'Var. annua autovetture', 'Premio medio motocicli', 'Premio medio ciclomotori'],
-  ['Torino',   '395,20', '2,1', '210,00', '150,00'],
-  ['Milano',   '380,10', '1,8', '230,50', '160,00'],
-  ['Bologna',  '372,00', '2,5', '205,00', '140,00'],
-  ['Firenze',  '410,40', '3,0', '240,00', '170,00'],
-  ['Roma',     '430,90', '3,4', '260,00', '180,00'],
-  ['Napoli',   '512,30', '4,5', '590,00', '452,00'],
-  ['Caserta',  '498,70', '4,2', '470,00', '400,00'],
-  ['Salerno',  '450,10', '3,9', '300,00', '250,00'],
-  ['Palermo',  '470,00', '4,0', '320,00', '260,00'],
-  ['Cagliari', '405,00', '2,8', '215,00', '155,00'],
-  ['Totale Italia', '436,80', '5,0', '329,00', '211,00'], // should be ignored (not a province)
-  [],
-  ['Fonte: IVASS, indagine IPER'],
-];
-const ws = XLSX.utils.aoa_to_sheet(aoa);
+// Synthetic workbook reproducing the IVASS long format (province + region tables + a cross-tab to ignore).
 const wb = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(wb, ws, 'Premio medio provincia');
-const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+const prov = [
+  ['Tavola A12 - Premio per provincia nel trimestre \'3\''],
+  ['Rilevazione','Periodo','Provincia','Media','5° Perc.','50° Perc.','99° Perc.','C.v. %','Num. contratti','% contratti','% variazione'],
+  ['Autovetture','3 trimestre/2025','NA','617.4','277','558.5','1731.4','47.6','71190','3.6','3.1'],
+  ['Autovetture','3 trimestre/2025','MI','412.7','200','380','1200','54','318111','16','5.9'],
+  ['Motocicli','3 trimestre/2025','NA','590','150','450','1500','60','30000','5','8'],
+];
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(prov), 'tavola_12');
+const reg = [
+  ['Tavola A11 - Premio per regione nel trimestre \'3\''],
+  ['Rilevazione','Periodo','Regione','Media','C.v. %','% variazione','Num. contratti','% contratti'],
+  ['Autovetture','3 trimestre/2025','Campania','537.9','52','3.3','156783','7.9'],
+  ['Autovetture','3 trimestre/2025','Lombardia','412.7','54.7','5.9','318111','16.1'],
+];
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reg), 'tavola_11');
+const cross = [
+  ['Tavola A15 - Premio per provincia e classe di età nel trimestre \'3\''],
+  ['Rilevazione','Periodo','Provincia','Classe d\'età','Media','Num. contratti'],
+  ['Autovetture','3 trimestre/2025','Agrigento','1: Fino a 24','797.2','142'],
+];
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cross), 'tavola_15');
 
-// --- run the parser ---
-const records = parseTavoleWorkbook(buffer).filter((r) => !r._error);
-const provinces = new Set(records.map((r) => r.provincia));
+const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+const { province, regione } = parseIvassWorkbook(buf);
 
-console.log('\n--- parser output sample ---');
-console.table(records.slice(0, 6).map((r) => ({
-  provincia: r.provincia, regione: r.regione, vehicle: r.vehicleType, metric: r.metric, value: r.value,
-})));
+ok(province.length === 3, `parsed 3 province rows (got ${province.length})`);
+ok(!province.some((r) => r.provincia === 'Agrigento'), 'ignored the age cross-tab sheet (tavola_15)');
+const na = province.find((r) => r.sigla === 'NA' && r.vehicleType === 'autovetture');
+ok(na.premioMedio === 617.4 && na.p50 === 558.5 && na.numContratti === 71190, 'Napoli auto fields correct');
+ok(regione.length === 2 && regione[0].macroarea === 'Sud', 'parsed region table with macroarea');
 
-assert(provinces.size === 10, `parsed all 10 provinces (got ${provinces.size})`);
-assert(!provinces.has('Totale Italia'), 'ignored the "Totale Italia" non-province row');
+const nat = buildNationalAggregates(province.filter((r) => r.vehicleType === 'autovetture'), {});
+// weighted: (617.4*71190 + 412.7*318111) / (71190+318111)
+const exp = Math.round(((617.4*71190 + 412.7*318111)/(71190+318111))*100)/100;
+ok(nat[0].premioMedio === exp, `national weighted mean = ${exp} (got ${nat[0].premioMedio})`);
 
-const napoliAuto = records.find((r) => r.provincia === 'Napoli' && r.vehicleType === 'autovetture' && r.metric === 'premio_medio');
-assert(napoliAuto && napoliAuto.value === 512.3, `Napoli car premium = 512.30 (got ${napoliAuto?.value})`);
+const macro = buildMacroareaAggregates(province.filter((r) => r.vehicleType === 'autovetture'), {});
+ok(macro.find((m) => m.macroarea === 'Sud').premioMedio === 617.4, 'Sud macro = Napoli only');
 
-const napoliVar = records.find((r) => r.provincia === 'Napoli' && r.vehicleType === 'autovetture' && r.metric === 'variazione_annua');
-assert(napoliVar && napoliVar.value === 4.5, `Napoli car YoY var classified correctly (got ${napoliVar?.value})`);
-
-const napoliMoto = records.find((r) => r.provincia === 'Napoli' && r.vehicleType === 'motocicli' && r.metric === 'premio_medio');
-assert(napoliMoto && napoliMoto.value === 590, `Napoli motorcycle premium = 590 (got ${napoliMoto?.value})`);
-
-// --- aggregation ---
-const meta = { period: '2025-Q4', source: 'IPER' };
-const regional = buildRegionalAggregates(records, meta);
-const campaniaAuto = regional.find((r) => r.regione === 'Campania' && r.vehicleType === 'autovetture');
-const expectedCampania = Math.round(((512.3 + 498.7 + 450.1) / 3) * 100) / 100;
-assert(campaniaAuto && campaniaAuto.premioMedio === expectedCampania,
-  `Campania regional avg car premium = ${expectedCampania} (got ${campaniaAuto?.premioMedio})`);
-assert(campaniaAuto.provinceCount === 3, 'Campania aggregate counts 3 provinces');
-
-const macro = buildMacroareaAggregates(records, meta);
-const sudAuto = macro.find((r) => r.macroarea === 'Sud' && r.vehicleType === 'autovetture');
-assert(sudAuto && sudAuto.provinceCount === 3, 'Sud macro-area counts Napoli+Caserta+Salerno');
-
-const national = buildNationalAggregates(records, meta);
-const natAuto = national.find((r) => r.vehicleType === 'autovetture');
-assert(natAuto && natAuto.provinceCount === 10, 'national car aggregate spans all 10 provinces');
-
-console.log('\n--- regional aggregates (cars) ---');
-console.table(regional.filter((r) => r.vehicleType === 'autovetture')
-  .map((r) => ({ regione: r.regione, premioMedio: r.premioMedio, n: r.provinceCount })));
-
-console.log('\n--- national (cars) ---', national.filter((r) => r.vehicleType === 'autovetture'));
-
-console.log(`\n${process.exitCode ? 'SOME TESTS FAILED' : 'ALL TESTS PASSED'}`);
+console.log(fails ? `\n${fails} TEST FALLITI` : '\nTUTTI I TEST PASSATI');
+process.exitCode = fails ? 1 : 0;

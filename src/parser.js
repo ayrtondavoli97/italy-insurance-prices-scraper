@@ -1,146 +1,160 @@
 import * as XLSX from 'xlsx';
-import { resolveProvince, normalizeName } from './provinces.js';
+import { resolveProvinceAny, resolveRegion, normalizeName } from './provinces.js';
 
-// Keywords used to locate the header row and classify columns.
-const HEADER_HINTS = [
-  'provincia', 'premio', 'prezzo', 'medio', 'variazione', 'var',
-  'autovetture', 'autovettura', 'auto', 'motocicli', 'motociclo',
-  'ciclomotori', 'ciclomotore', 'trimestre', 'annua', 'territorio',
-];
+// The IVASS IPER "tavole" workbook is in tidy/long format: each data sheet has a
+// header row starting with "Rilevazione" (vehicle type), then "Periodo", a dimension
+// column (Regione / Provincia / …), and value columns (Media, % variazione, Num. contratti, …).
+//
+// This parser targets the two geographic tables we care about for a price dataset:
+//   • "Premio per provincia"  (per-province average premium + percentiles + YoY + contracts)
+//   • "Premio per regione"    (official contract-weighted regional average + YoY + contracts)
+// It deliberately ignores the many cross-tab sheets (age, bonus-malus, gender, black-box, …).
 
-const VEHICLE_PATTERNS = [
-  { type: 'autovetture', re: /autovett|auto(?!\w)/ },
-  { type: 'motocicli', re: /motocicl|moto(?!r)/ },
-  { type: 'ciclomotori', re: /ciclomot/ },
-];
-
-// Parse a possibly-string numeric cell. Handles Italian decimal commas and thousands dots.
 export function toNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   let s = String(value).trim();
-  if (!s) return null;
+  if (!s || s === '.' || s === '-' || s === 'n.d.' || s === 'nd') return null;
   s = s.replace(/[€%\s]/g, '');
-  // If both separators present, assume '.' thousands and ',' decimal (IT format).
-  if (s.includes('.') && s.includes(',')) {
-    s = s.replace(/\./g, '').replace(',', '.');
-  } else if (s.includes(',')) {
-    s = s.replace(',', '.');
-  }
+  if (s.includes('.') && s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
 
-// Classify a header cell text into { vehicleType, metric }.
-function classifyHeader(headerText) {
-  const norm = normalizeName(headerText);
-  let vehicleType = null;
-  for (const { type, re } of VEHICLE_PATTERNS) {
-    if (re.test(norm)) { vehicleType = type; break; }
-  }
-  let metric = 'premio_medio';
-  if (/\bvar\b|variazione|annua|tendenz/.test(norm) || String(headerText).includes('%')) {
-    metric = 'variazione_annua';
-  }
-  return { vehicleType, metric };
+// "3 trimestre/2025" → { period: "2025-Q3", periodType: "trimestre", refYear: 2025 }
+export function normalizePeriodCell(raw) {
+  const s = String(raw || '').toLowerCase();
+  const q = s.match(/(\d)\s*trimestre\s*\/?\s*(\d{4})/);
+  if (q) return { period: `${q[2]}-Q${q[1]}`, periodType: 'trimestre', refYear: Number(q[2]) };
+  const y = s.match(/(\d{4})/);
+  return { period: y ? y[1] : null, periodType: 'annuale', refYear: y ? Number(y[1]) : null };
 }
 
-// Find the header row index: the row with the most HEADER_HINTS keyword hits.
-function findHeaderRow(rows) {
-  let best = { idx: -1, score: 0 };
-  const scanLimit = Math.min(rows.length, 25);
-  for (let i = 0; i < scanLimit; i++) {
-    const joined = normalizeName(rows[i].join(' '));
-    let score = 0;
-    for (const hint of HEADER_HINTS) if (joined.includes(hint)) score++;
-    if (score > best.score) best = { idx: i, score };
-  }
-  return best.score >= 2 ? best.idx : -1;
+const VEHICLE_MAP = { autovetture: 'autovetture', motocicli: 'motocicli', ciclomotori: 'ciclomotori' };
+function normVehicle(raw) {
+  return VEHICLE_MAP[normalizeName(raw)] || null;
 }
 
-// Identify which column holds province names by scanning data rows for province matches.
-function findProvinceColumn(rows, startRow) {
-  const colHits = {};
-  for (let i = startRow; i < rows.length; i++) {
-    const row = rows[i];
-    for (let c = 0; c < row.length; c++) {
-      if (resolveProvince(row[c])) colHits[c] = (colHits[c] || 0) + 1;
+// Read a sheet, locate its "Rilevazione" header row, return { headers, headerIdx, dataRows, title }.
+function readSheet(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '' });
+  if (!rows.length) return null;
+  const title = String(rows[0]?.[0] || '');
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    if (normalizeName(rows[i][0]) === 'rilevazione') { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) return null;
+  return { title, headers: rows[headerIdx].map((h) => normalizeName(h)), headerIdx, rows };
+}
+
+// Find a column index whose normalized header matches any of the given predicates/strings.
+function findCol(headers, matchers) {
+  for (let c = 0; c < headers.length; c++) {
+    for (const m of matchers) {
+      if (typeof m === 'string' ? headers[c] === m : m.test(headers[c])) return c;
     }
   }
-  let bestCol = -1; let bestHits = 0;
-  for (const [c, hits] of Object.entries(colHits)) {
-    if (hits > bestHits) { bestHits = hits; bestCol = Number(c); }
-  }
-  // Need a meaningful number of province matches to trust the column.
-  return bestHits >= 5 ? bestCol : -1;
+  return -1;
 }
 
-// Parse one worksheet into raw value records.
-function parseSheet(sheet, sheetName) {
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
-  if (!rows.length) return [];
+function parseProvinceSheet(sheet) {
+  const { headers, headerIdx, rows } = sheet;
+  const cVehicle = findCol(headers, ['rilevazione']);
+  const cPeriod = findCol(headers, ['periodo']);
+  const cProv = findCol(headers, ['provincia']);
+  const cMedia = findCol(headers, ['media']);
+  const cVar = findCol(headers, [/variazione/]);
+  const cN = findCol(headers, [/num.*contratti/, /n.*contratti/]);
+  const cCv = findCol(headers, [/c\s*v/]);
+  const perc = {
+    p5: findCol(headers, [/5.*perc/]), p10: findCol(headers, [/10.*perc/]),
+    p25: findCol(headers, [/25.*perc/]), p50: findCol(headers, [/50.*perc/]),
+    p75: findCol(headers, [/75.*perc/]), p95: findCol(headers, [/95.*perc/]),
+    p99: findCol(headers, [/99.*perc/]),
+  };
 
-  const headerIdx = findHeaderRow(rows);
-  const dataStart = headerIdx >= 0 ? headerIdx + 1 : 0;
-  const provinceCol = findProvinceColumn(rows, dataStart);
-  if (provinceCol < 0) return []; // sheet has no province table
-
-  // Build column metadata from the header row (and the row above, if merged headers).
-  const headerRow = headerIdx >= 0 ? rows[headerIdx] : [];
-  const aboveRow = headerIdx > 0 ? rows[headerIdx - 1] : [];
-  const sheetVehicle = classifyHeader(sheetName).vehicleType;
-
-  const records = [];
-  for (let i = dataStart; i < rows.length; i++) {
-    const row = rows[i];
-    const prov = resolveProvince(row[provinceCol]);
-    if (!prov) continue;
-
-    for (let c = 0; c < row.length; c++) {
-      if (c === provinceCol) continue;
-      const value = toNumber(row[c]);
-      if (value === null) continue;
-
-      const headerText = [aboveRow[c], headerRow[c]].filter(Boolean).join(' ');
-      const cls = classifyHeader(headerText);
-      const vehicleType = cls.vehicleType || sheetVehicle || 'autovetture';
-
-      // Heuristic guard: a premio_medio in euro is realistically 50–3000.
-      // Values that look like percentages get reclassified as variazione.
-      let metric = cls.metric;
-      if (metric === 'premio_medio' && Math.abs(value) < 50 && headerText === '') {
-        metric = 'variazione_annua';
-      }
-
-      records.push({
-        provincia: prov.name,
-        sigla: prov.sigla,
-        regione: prov.regione,
-        macroarea: prov.macroarea,
-        vehicleType,
-        metric,
-        value,
-        rawProvinceLabel: String(row[provinceCol]).trim(),
-        columnIndex: c,
-        columnHeader: headerText || null,
-        sheetName,
-      });
-    }
-  }
-  return records;
-}
-
-// Public: parse an XLSX buffer (the IVASS "tavole_*.xlsx") into raw province records.
-export function parseTavoleWorkbook(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
   const out = [];
-  for (const sheetName of wb.SheetNames) {
-    try {
-      out.push(...parseSheet(wb.Sheets[sheetName], sheetName));
-    } catch (err) {
-      // Keep going on a bad sheet rather than failing the whole file.
-      out.push({ _error: true, sheetName, message: err.message });
-    }
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const vehicleType = normVehicle(r[cVehicle]);
+    const prov = resolveProvinceAny(r[cProv]);
+    const premioMedio = toNumber(r[cMedia]);
+    if (!vehicleType || !prov || premioMedio === null) continue;
+    const rec = {
+      level: 'provincia',
+      provincia: prov.name,
+      sigla: prov.sigla,
+      regione: prov.regione,
+      macroarea: prov.macroarea,
+      vehicleType,
+      premioMedio,
+      variazioneAnnua: cVar >= 0 ? toNumber(r[cVar]) : null,
+      numContratti: cN >= 0 ? toNumber(r[cN]) : null,
+      cv: cCv >= 0 ? toNumber(r[cCv]) : null,
+      ...Object.fromEntries(Object.entries(perc).map(([k, idx]) => [k, idx >= 0 ? toNumber(r[idx]) : null])),
+      ...normalizePeriodCell(r[cPeriod]),
+    };
+    out.push(rec);
   }
   return out;
+}
+
+function parseRegionSheet(sheet) {
+  const { headers, headerIdx, rows } = sheet;
+  const cVehicle = findCol(headers, ['rilevazione']);
+  const cPeriod = findCol(headers, ['periodo']);
+  const cReg = findCol(headers, ['regione']);
+  const cMedia = findCol(headers, ['media']);
+  const cVar = findCol(headers, [/variazione/]);
+  const cN = findCol(headers, [/num.*contratti/, /n.*contratti/]);
+  const cCv = findCol(headers, [/c\s*v/]);
+
+  const out = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const vehicleType = normVehicle(r[cVehicle]);
+    const reg = resolveRegion(r[cReg]);
+    const premioMedio = toNumber(r[cMedia]);
+    if (!vehicleType || !reg || premioMedio === null) continue;
+    out.push({
+      level: 'regione',
+      regione: reg.regione,
+      macroarea: reg.macroarea,
+      vehicleType,
+      premioMedio,
+      variazioneAnnua: cVar >= 0 ? toNumber(r[cVar]) : null,
+      numContratti: cN >= 0 ? toNumber(r[cN]) : null,
+      cv: cCv >= 0 ? toNumber(r[cCv]) : null,
+      ...normalizePeriodCell(r[cPeriod]),
+    });
+  }
+  return out;
+}
+
+// Parse the workbook → { province: [...], regione: [...] }.
+export function parseIvassWorkbook(buffer) {
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const result = { province: [], regione: [] };
+
+  for (const name of wb.SheetNames) {
+    const sheet = readSheet(wb.Sheets[name]);
+    if (!sheet) continue;
+    const t = normalizeName(sheet.title);
+    const headers = sheet.headers;
+    const hasProvincia = headers.includes('provincia');
+    const hasRegione = headers.includes('regione');
+    // Geographic premium tables only: must have Media and a geo dimension, and NOT be a
+    // cross-tab by age / bonus-malus / gender / black-box.
+    const isCrossTab = /(classe|bonus|genere|scatola|eta)/.test(t)
+      || headers.some((h) => /(classe|bonus|genere|scatola)/.test(h));
+
+    if (hasProvincia && /premio per provincia/.test(t) && !isCrossTab) {
+      result.province.push(...parseProvinceSheet(sheet));
+    } else if (hasRegione && /premio per regione/.test(t) && !isCrossTab) {
+      result.regione.push(...parseRegionSheet(sheet));
+    }
+  }
+  return result;
 }

@@ -49,7 +49,9 @@ vehicle/metric of each value column, so it keeps working if IVASS reorders the t
 
 ## Output
 
-Per-province record:
+The actor produces ~**359 records per quarterly publication**, on four levels (`level` field):
+
+**`provincia`** — 107 provinces × 3 vehicle types, the core of the dataset:
 
 ```json
 {
@@ -59,25 +61,26 @@ Per-province record:
   "regione": "Campania",
   "macroarea": "Sud",
   "vehicleType": "autovetture",
-  "metric": "premio_medio",
-  "premioMedio": 512.3,
-  "variazioneAnnua": null,
-  "period": "2025-Q4",
+  "premioMedio": 617.4,
+  "variazioneAnnua": 3.1,
+  "numContratti": 71190,
+  "cv": 47.6,
+  "p5": 277, "p10": 333.9, "p25": 435.5, "p50": 558.5,
+  "p75": 723.9, "p95": 1147.8, "p99": 1731.4,
+  "period": "2025-Q3",
   "periodType": "trimestre",
   "source": "IPER",
-  "sourceFile": "https://www.ivass.it/.../tavole_IV_trimestre.xlsx",
-  "publicationUrl": "https://www.ivass.it/.../index.html",
-  "publicationDate": "2026-04-20",
-  "scrapedAt": "2026-06-23T10:00:00.000Z"
+  "sourceFile": "https://www.ivass.it/.../tavole_III_trimestre.xlsx",
+  "publicationDate": "2026-02-05"
 }
 ```
 
-Aggregate records carry `level` = `regione` | `macroarea` | `nazionale`, with
-`premioMedio`, `premioMin`, `premioMax` and `provinceCount`.
+- **`regione`** — official IVASS contract-weighted regional average (`premioMedio`, `variazioneAnnua`, `numContratti`). IVASS publishes the regional table for **cars only**, so region rows cover `autovetture`.
+- **`macroarea`** — Nord-Ovest / Nord-Est / Centro / Sud / Isole, **contract-weighted** mean computed from province data (all 3 vehicle types), with `premioMin`/`premioMax`/`provinceCount`.
+- **`nazionale`** — national contract-weighted average per vehicle type. (Sanity check: cars ≈ €437 for 2025-Q3, matching the official IVASS figure.)
 
-> **Note on aggregates:** regional / macro-area / national averages are **unweighted means**
-> across provinces, not contract-weighted. They are useful for territorial comparison; for the
-> official weighted national figure refer to the IVASS report directly.
+> Macro-area and national figures are weighted by `numContratti`, reproducing the IVASS
+> methodology rather than a naive province mean.
 
 ## Source & legal note
 

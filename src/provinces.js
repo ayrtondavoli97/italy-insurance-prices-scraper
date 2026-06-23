@@ -168,3 +168,79 @@ export function resolveProvince(raw) {
 }
 
 export const PROVINCE_COUNT = new Set(Object.values(PROVINCES).map((p) => p.sigla)).size;
+
+// Index by plate code (sigla). IVASS's per-province table (tavola_12) labels rows by sigla.
+export const BY_SIGLA = {};
+for (const p of Object.values(PROVINCES)) BY_SIGLA[p.sigla] = p;
+
+// Resolve a province given either a 2-letter sigla (AG, MI, …) or a full name.
+export function resolveProvinceAny(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (/^[A-Za-z]{2}$/.test(s) && BY_SIGLA[s.toUpperCase()]) return BY_SIGLA[s.toUpperCase()];
+  return resolveProvince(s);
+}
+
+// Region name → { regione (canonical), macroarea }. Handles IVASS abbreviations.
+const REGION_MACROAREA = {
+  piemonte: 'Nord-Ovest',
+  "valle d aosta": 'Nord-Ovest',
+  lombardia: 'Nord-Ovest',
+  liguria: 'Nord-Ovest',
+  'trentino alto adige': 'Nord-Est',
+  veneto: 'Nord-Est',
+  'friuli venezia giulia': 'Nord-Est',
+  'emilia romagna': 'Nord-Est',
+  toscana: 'Centro',
+  umbria: 'Centro',
+  marche: 'Centro',
+  lazio: 'Centro',
+  abruzzo: 'Sud',
+  molise: 'Sud',
+  campania: 'Sud',
+  puglia: 'Sud',
+  basilicata: 'Sud',
+  calabria: 'Sud',
+  sicilia: 'Isole',
+  sardegna: 'Isole',
+};
+
+const REGION_CANONICAL = {
+  piemonte: 'Piemonte',
+  "valle d aosta": "Valle d'Aosta",
+  lombardia: 'Lombardia',
+  liguria: 'Liguria',
+  'trentino alto adige': 'Trentino-Alto Adige',
+  veneto: 'Veneto',
+  'friuli venezia giulia': 'Friuli-Venezia Giulia',
+  'emilia romagna': 'Emilia-Romagna',
+  toscana: 'Toscana',
+  umbria: 'Umbria',
+  marche: 'Marche',
+  lazio: 'Lazio',
+  abruzzo: 'Abruzzo',
+  molise: 'Molise',
+  campania: 'Campania',
+  puglia: 'Puglia',
+  basilicata: 'Basilicata',
+  calabria: 'Calabria',
+  sicilia: 'Sicilia',
+  sardegna: 'Sardegna',
+};
+
+// Map IVASS abbreviations to a normalized lookup key.
+function regionKey(raw) {
+  let k = normalizeName(raw);
+  k = k
+    .replace(/friuli.*/, 'friuli venezia giulia')
+    .replace(/trentino.*/, 'trentino alto adige')
+    .replace(/emilia.*/, 'emilia romagna')
+    .replace(/^val.*aosta$/, 'valle d aosta');
+  return k;
+}
+
+export function resolveRegion(raw) {
+  const k = regionKey(raw);
+  if (REGION_CANONICAL[k]) return { regione: REGION_CANONICAL[k], macroarea: REGION_MACROAREA[k] };
+  return null;
+}

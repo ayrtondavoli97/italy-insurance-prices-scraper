@@ -1,65 +1,68 @@
-// Build region / macro-area / national aggregates from province-level premio_medio records.
-// Aggregates are simple (unweighted) means across provinces — note: a contract-weighted
-// mean would differ; this is documented as an unweighted territorial average.
+// Build macro-area and national aggregates from per-province records.
+// Uses a CONTRACT-WEIGHTED mean (weighted by numContratti) when contract counts are
+// available, falling back to an unweighted mean otherwise. This matches how IVASS
+// reports territorial averages far better than a naive province mean.
 
-function mean(nums) {
-  if (!nums.length) return null;
-  const s = nums.reduce((a, b) => a + b, 0);
-  return Math.round((s / nums.length) * 100) / 100;
+function weightedMean(items) {
+  const withW = items.filter((i) => i.numContratti && i.premioMedio !== null);
+  if (withW.length === items.length && withW.length) {
+    const num = withW.reduce((a, i) => a + i.premioMedio * i.numContratti, 0);
+    const den = withW.reduce((a, i) => a + i.numContratti, 0);
+    return den ? Math.round((num / den) * 100) / 100 : null;
+  }
+  const vals = items.map((i) => i.premioMedio).filter((v) => v !== null);
+  if (!vals.length) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100;
 }
 
-function summarize(records, level, keyField, meta) {
-  const groups = new Map();
+function groupBy(records, keyFn) {
+  const m = new Map();
   for (const r of records) {
-    if (r.metric !== 'premio_medio' || r.value === null) continue;
-    const groupKey = `${r[keyField]}||${r.vehicleType}`;
-    if (!groups.has(groupKey)) groups.set(groupKey, []);
-    groups.get(groupKey).push(r);
+    if (r.premioMedio === null) continue;
+    const k = keyFn(r);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
   }
+  return m;
+}
 
+export function buildMacroareaAggregates(provinceRecords, meta) {
+  const groups = groupBy(provinceRecords, (r) => `${r.macroarea}||${r.vehicleType}`);
   const out = [];
-  for (const [groupKey, items] of groups) {
-    const [name, vehicleType] = groupKey.split('||');
-    const values = items.map((i) => i.value);
+  for (const [key, items] of groups) {
+    const [macroarea, vehicleType] = key.split('||');
+    const totN = items.reduce((a, i) => a + (i.numContratti || 0), 0);
     out.push({
-      level,
-      [keyField]: name,
+      level: 'macroarea',
+      macroarea,
       vehicleType,
-      premioMedio: mean(values),
-      premioMin: Math.min(...values),
-      premioMax: Math.max(...values),
+      premioMedio: weightedMean(items),
+      premioMin: Math.min(...items.map((i) => i.premioMedio)),
+      premioMax: Math.max(...items.map((i) => i.premioMedio)),
+      numContratti: totN || null,
       provinceCount: items.length,
+      weighted: items.every((i) => i.numContratti),
       ...meta,
     });
   }
   return out;
 }
 
-export function buildRegionalAggregates(provinceRecords, meta) {
-  return summarize(provinceRecords, 'regione', 'regione', meta);
-}
-
-export function buildMacroareaAggregates(provinceRecords, meta) {
-  return summarize(provinceRecords, 'macroarea', 'macroarea', meta);
-}
-
 export function buildNationalAggregates(provinceRecords, meta) {
-  const groups = new Map();
-  for (const r of provinceRecords) {
-    if (r.metric !== 'premio_medio' || r.value === null) continue;
-    if (!groups.has(r.vehicleType)) groups.set(r.vehicleType, []);
-    groups.get(r.vehicleType).push(r.value);
-  }
+  const groups = groupBy(provinceRecords, (r) => r.vehicleType);
   const out = [];
-  for (const [vehicleType, values] of groups) {
+  for (const [vehicleType, items] of groups) {
+    const totN = items.reduce((a, i) => a + (i.numContratti || 0), 0);
     out.push({
       level: 'nazionale',
       area: 'Italia',
       vehicleType,
-      premioMedio: mean(values),
-      premioMin: Math.min(...values),
-      premioMax: Math.max(...values),
-      provinceCount: values.length,
+      premioMedio: weightedMean(items),
+      premioMin: Math.min(...items.map((i) => i.premioMedio)),
+      premioMax: Math.max(...items.map((i) => i.premioMedio)),
+      numContratti: totN || null,
+      provinceCount: items.length,
+      weighted: items.every((i) => i.numContratti),
       ...meta,
     });
   }
