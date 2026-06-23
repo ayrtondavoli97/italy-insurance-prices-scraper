@@ -64,21 +64,25 @@
     "includeProvinceData": {
       "title": "Include per-province rows",
       "type": "boolean",
+      "description": "Emit one row per province (per vehicle type and metric).",
       "default": true
     },
     "includeRegionalAggregates": {
       "title": "Include per-region averages",
       "type": "boolean",
+      "description": "Emit unweighted average premium per region (e.g. Campania, Lombardia).",
       "default": true
     },
     "includeMacroareaAggregates": {
       "title": "Include macro-area averages (Nord/Centro/Sud/Isole)",
       "type": "boolean",
+      "description": "Emit unweighted average premium per macro-area (Nord-Ovest/Nord-Est/Centro/Sud/Isole).",
       "default": true
     },
     "includeNationalAggregate": {
       "title": "Include national average",
       "type": "boolean",
+      "description": "Emit one national unweighted average premium per vehicle type.",
       "default": true
     },
     "proxyConfiguration": {
