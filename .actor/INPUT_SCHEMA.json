@@ -1,97 +1,101 @@
 {
-  "title": "Italy Insurance Prices Scraper — Input",
+  "title": "Italy Car Insurance Prices — Input",
+  "description": "By default this pulls the latest quarter of RC Auto prices for every Italian province, region and macro-area. Just press Start — or fine-tune below.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "source": {
-      "title": "Data source",
-      "type": "string",
-      "description": "Which IVASS publication series to read. IPER carries the per-province price tables.",
-      "editor": "select",
-      "enum": ["iper", "comunicazioni", "bollettino"],
-      "enumTitles": [
-        "Indagine IPER (per-province RC Auto prices)",
-        "Comunicazioni statistiche (quarterly IPER reports)",
-        "Bollettino Statistico (annual, richer indicators)"
-      ],
-      "default": "iper"
-    },
     "mode": {
-      "title": "Collection mode",
+      "title": "📅 What time range?",
       "type": "string",
-      "description": "latest = most recent publication(s); year_range = a span of years; all_available = full archive from 2021.",
+      "description": "Latest = the most recent quarter (fastest, recommended). Year range = pick specific years. All available = the full history since 2021.",
       "editor": "select",
       "enum": ["latest", "year_range", "all_available"],
-      "enumTitles": ["Latest publication(s)", "Year range", "All available (2021→today)"],
+      "enumTitles": ["Latest quarter (recommended)", "Specific year range", "All available (2021 → today)"],
       "default": "latest"
     },
     "maxPublications": {
-      "title": "Max publications (latest mode)",
+      "title": "How many recent quarters?",
       "type": "integer",
-      "description": "How many recent publications with province data to collect when mode = latest.",
+      "description": "Only for 'Latest' mode — e.g. 1 = newest quarter, 4 = last year of quarters.",
       "default": 1,
       "minimum": 1,
-      "maximum": 50
+      "maximum": 50,
+      "unit": "quarters"
     },
     "yearFrom": {
-      "title": "Year from",
+      "title": "From year",
       "type": "integer",
-      "description": "Start year (used only when mode = year_range).",
+      "description": "Start year — used only in 'Specific year range' mode.",
       "default": 2024,
       "minimum": 2021,
       "maximum": 2100
     },
     "yearTo": {
-      "title": "Year to",
+      "title": "To year",
       "type": "integer",
-      "description": "End year (used only when mode = year_range).",
+      "description": "End year — used only in 'Specific year range' mode.",
       "default": 2026,
       "minimum": 2021,
       "maximum": 2100
     },
     "vehicleTypes": {
-      "title": "Vehicle types",
+      "title": "🚗 Vehicle types",
       "type": "array",
-      "description": "Which vehicle categories to include.",
+      "description": "Which vehicles to include. Leave all selected for the complete picture.",
       "editor": "select",
       "items": {
         "type": "string",
         "enum": ["autovetture", "motocicli", "ciclomotori"],
-        "enumTitles": ["Cars (autovetture)", "Motorcycles (motocicli)", "Mopeds (ciclomotori)"]
+        "enumTitles": ["🚗 Cars (autovetture)", "🏍️ Motorcycles (motocicli)", "🛵 Mopeds (ciclomotori)"]
       },
-      "default": ["autovetture", "motocicli", "ciclomotori"]
+      "default": ["autovetture", "motocicli", "ciclomotori"],
+      "prefill": ["autovetture", "motocicli", "ciclomotori"]
     },
     "includeProvinceData": {
-      "title": "Include per-province rows",
+      "title": "🗺️ Per-province rows",
       "type": "boolean",
-      "description": "Emit one row per province (per vehicle type and metric).",
+      "description": "The core data: average premium, YoY change, percentiles and contract counts for all 107 provinces.",
+      "sectionCaption": "Territorial levels — choose what to include",
+      "sectionDescription": "Pick which geographic breakdowns you want in the output. All are on by default.",
       "default": true
     },
     "includeRegionalAggregates": {
-      "title": "Include per-region averages",
+      "title": "🏛️ Regional averages (official, weighted)",
       "type": "boolean",
-      "description": "Emit unweighted average premium per region (e.g. Campania, Lombardia).",
+      "description": "Official IVASS contract-weighted average premium for each of the 20 regions.",
       "default": true
     },
     "includeMacroareaAggregates": {
-      "title": "Include macro-area averages (Nord/Centro/Sud/Isole)",
+      "title": "🧭 Macro-area averages",
       "type": "boolean",
-      "description": "Emit unweighted average premium per macro-area (Nord-Ovest/Nord-Est/Centro/Sud/Isole).",
+      "description": "Weighted averages for Nord-Ovest, Nord-Est, Centro, Sud and Isole.",
       "default": true
     },
     "includeNationalAggregate": {
-      "title": "Include national average",
+      "title": "🇮🇹 National average",
       "type": "boolean",
-      "description": "Emit one national unweighted average premium per vehicle type.",
+      "description": "One national contract-weighted average per vehicle type (matches the official IVASS headline figure).",
       "default": true
     },
+    "source": {
+      "title": "Data source",
+      "type": "string",
+      "description": "Advanced — leave as IPER. IPER carries the per-province price tables.",
+      "editor": "select",
+      "enum": ["iper", "comunicazioni", "bollettino"],
+      "enumTitles": ["IPER — RC Auto prices by province (recommended)", "Quarterly statistical communications", "Annual Statistical Bulletin"],
+      "default": "iper",
+      "sectionCaption": "Advanced",
+      "sectionDescription": "You normally don't need to touch these."
+    },
     "proxyConfiguration": {
-      "title": "Proxy configuration",
+      "title": "Proxy",
       "type": "object",
-      "description": "IVASS is an Italian site; an Italian residential/datacenter proxy is recommended.",
+      "description": "IVASS is an Italian site — an Italian proxy is recommended and pre-configured.",
       "editor": "proxy",
-      "default": { "useApifyProxy": true, "apifyProxyGroups": ["RESIDENTIAL"], "apifyProxyCountry": "IT" }
+      "default": { "useApifyProxy": true, "apifyProxyGroups": ["RESIDENTIAL"], "apifyProxyCountry": "IT" },
+      "prefill": { "useApifyProxy": true, "apifyProxyGroups": ["RESIDENTIAL"], "apifyProxyCountry": "IT" }
     }
   },
-  "required": ["source", "mode"]
+  "required": ["mode"]
 }

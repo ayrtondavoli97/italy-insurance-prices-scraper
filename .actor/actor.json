@@ -1,8 +1,8 @@
 {
   "actorSpecification": 1,
   "name": "italy-insurance-prices-scraper",
-  "title": "Italy Insurance Prices (RC Auto) by Province & Region",
-  "description": "Structured dataset of Italian motor-liability (RC Auto) insurance prices by province, region and macro-area, built from official IVASS IPER statistical data.",
+  "title": "Italy Car Insurance Prices — RC Auto by Province & Region",
+  "description": "Official Italian RC Auto insurance prices by province, region & macro-area from IVASS. Average premiums, YoY change, percentiles & contract counts for cars, motorcycles & mopeds — updated quarterly. No quotes, no PII.",
   "version": "1.0",
   "buildTag": "latest",
   "meta": {
