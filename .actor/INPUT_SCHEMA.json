@@ -7,20 +7,20 @@
     "mode": {
       "title": "📅 What time range?",
       "type": "string",
-      "description": "Latest = the most recent quarter (fastest, recommended). Year range = pick specific years. All available = the full history since 2021.",
+      "description": "Latest = the most recent period (fastest, recommended). Year range = pick specific years. All available = the full history since 2021.",
       "editor": "select",
       "enum": ["latest", "year_range", "all_available"],
-      "enumTitles": ["Latest quarter (recommended)", "Specific year range", "All available (2021 → today)"],
+      "enumTitles": ["Latest period (recommended)", "Specific year range", "All available (2021 → today)"],
       "default": "latest"
     },
     "maxPublications": {
-      "title": "How many recent quarters?",
+      "title": "How many recent periods?",
       "type": "integer",
-      "description": "Only for 'Latest' mode — e.g. 1 = newest quarter, 4 = last year of quarters.",
+      "description": "Only for 'Latest' mode — e.g. 1 = newest period, 4 = the last four periods.",
       "default": 1,
       "minimum": 1,
       "maximum": 50,
-      "unit": "quarters"
+      "unit": "periods"
     },
     "yearFrom": {
       "title": "From year",

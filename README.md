@@ -109,8 +109,8 @@ The defaults already give you the **latest quarter, all vehicle types, all terri
 
 | Option | What it does |
 |---|---|
-| `mode` | `latest` (most recent quarter) · `year_range` · `all_available` (since 2021) |
-| `maxPublications` | How many recent quarters to pull in `latest` mode |
+| `mode` | `latest` (most recent period) · `year_range` · `all_available` (since 2021) |
+| `maxPublications` | How many recent periods to pull in `latest` mode |
 | `vehicleTypes` | Pick cars / motorcycles / mopeds |
 | `includeProvinceData` | Per-province rows (on by default) |
 | `includeRegionalAggregates` | Official regional averages |
