@@ -52,24 +52,44 @@ const state = {
   totalProvinceRecords: 0,
 };
 
-// ---- Download a binary file honoring the proxy ----------------------------
+// ---- Download a binary file robustly (rotating proxy, then no-proxy fallback) ----
 async function downloadBuffer(url) {
-  const proxyUrl = proxyConfiguration ? await proxyConfiguration.newUrl() : undefined;
-  const res = await gotScraping({
-    url,
-    proxyUrl,
-    responseType: 'buffer',
-    timeout: { request: 120_000 },
-    headers: { referer: SOURCES.iper },
-  });
-  return res.body;
+  const attempts = [];
+  // 3 attempts through a fresh proxy session each, then 1 direct attempt.
+  for (let i = 0; i < 3; i++) attempts.push('proxy');
+  attempts.push('direct');
+
+  let lastErr;
+  for (let i = 0; i < attempts.length; i++) {
+    const useProxy = attempts[i] === 'proxy' && proxyConfiguration;
+    try {
+      const proxyUrl = useProxy ? await proxyConfiguration.newUrl(`sess${Date.now()}_${i}`) : undefined;
+      const res = await gotScraping({
+        url,
+        proxyUrl,
+        responseType: 'buffer',
+        http2: false,
+        decompress: true,
+        timeout: { request: 180_000 },
+        retry: { limit: 1 },
+        headers: { referer: SOURCES.iper, accept: '*/*' },
+      });
+      if (res.body?.length) return res.body;
+      lastErr = new Error(`empty body (status ${res.statusCode})`);
+    } catch (err) {
+      lastErr = err;
+      log.warning(`download attempt ${i + 1}/${attempts.length} (${attempts[i]}) failed: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 const crawler = new CheerioCrawler({
   proxyConfiguration,
   maxRequestRetries: 4,
   requestHandlerTimeoutSecs: 240,
-  maxConcurrency: 3,
+  maxConcurrency: mode === 'latest' ? 1 : 3,
 
   async requestHandler({ request, body, enqueueLinks, addRequests }) {
     const html = body.toString();
@@ -79,7 +99,9 @@ const crawler = new CheerioCrawler({
       log.info(`LIST ${request.url} → ${links.length} detail pages found`);
 
       // In "latest" mode we only need the newest few; the listing is newest-first.
-      const slice = mode === 'latest' ? links.slice(0, Math.max(maxPublications * 4, 4)) : links;
+      // Newest-first; keep a small buffer beyond the target so a failed download
+      // can fall through to the next-most-recent publication.
+      const slice = mode === 'latest' ? links.slice(0, maxPublications + 3) : links;
       const toAdd = slice.map((l) => ({ url: l.url, label: 'DETAIL', userData: { listTitle: l.title } }));
       state.detailEnqueued += toAdd.length;
       await addRequests(toAdd);
