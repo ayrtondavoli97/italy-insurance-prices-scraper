@@ -1,0 +1,93 @@
+{
+  "title": "Italy Insurance Prices Scraper — Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "source": {
+      "title": "Data source",
+      "type": "string",
+      "description": "Which IVASS publication series to read. IPER carries the per-province price tables.",
+      "editor": "select",
+      "enum": ["iper", "comunicazioni", "bollettino"],
+      "enumTitles": [
+        "Indagine IPER (per-province RC Auto prices)",
+        "Comunicazioni statistiche (quarterly IPER reports)",
+        "Bollettino Statistico (annual, richer indicators)"
+      ],
+      "default": "iper"
+    },
+    "mode": {
+      "title": "Collection mode",
+      "type": "string",
+      "description": "latest = most recent publication(s); year_range = a span of years; all_available = full archive from 2021.",
+      "editor": "select",
+      "enum": ["latest", "year_range", "all_available"],
+      "enumTitles": ["Latest publication(s)", "Year range", "All available (2021→today)"],
+      "default": "latest"
+    },
+    "maxPublications": {
+      "title": "Max publications (latest mode)",
+      "type": "integer",
+      "description": "How many recent publications with province data to collect when mode = latest.",
+      "default": 1,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "yearFrom": {
+      "title": "Year from",
+      "type": "integer",
+      "description": "Start year (used only when mode = year_range).",
+      "default": 2024,
+      "minimum": 2021,
+      "maximum": 2100
+    },
+    "yearTo": {
+      "title": "Year to",
+      "type": "integer",
+      "description": "End year (used only when mode = year_range).",
+      "default": 2026,
+      "minimum": 2021,
+      "maximum": 2100
+    },
+    "vehicleTypes": {
+      "title": "Vehicle types",
+      "type": "array",
+      "description": "Which vehicle categories to include.",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": ["autovetture", "motocicli", "ciclomotori"],
+        "enumTitles": ["Cars (autovetture)", "Motorcycles (motocicli)", "Mopeds (ciclomotori)"]
+      },
+      "default": ["autovetture", "motocicli", "ciclomotori"]
+    },
+    "includeProvinceData": {
+      "title": "Include per-province rows",
+      "type": "boolean",
+      "default": true
+    },
+    "includeRegionalAggregates": {
+      "title": "Include per-region averages",
+      "type": "boolean",
+      "default": true
+    },
+    "includeMacroareaAggregates": {
+      "title": "Include macro-area averages (Nord/Centro/Sud/Isole)",
+      "type": "boolean",
+      "default": true
+    },
+    "includeNationalAggregate": {
+      "title": "Include national average",
+      "type": "boolean",
+      "default": true
+    },
+    "proxyConfiguration": {
+      "title": "Proxy configuration",
+      "type": "object",
+      "description": "IVASS is an Italian site; an Italian residential/datacenter proxy is recommended.",
+      "editor": "proxy",
+      "default": { "useApifyProxy": true, "apifyProxyGroups": ["RESIDENTIAL"], "apifyProxyCountry": "IT" }
+    }
+  },
+  "required": ["source", "mode"]
+}

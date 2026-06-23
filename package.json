@@ -1,0 +1,23 @@
+{
+  "name": "italy-insurance-prices-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Apify actor that builds a structured dataset of Italian RC Auto (motor liability) insurance prices by province and region from official IVASS IPER statistical data.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "test:parser": "node test/test_parser.js"
+  },
+  "dependencies": {
+    "apify": "^3.2.6",
+    "crawlee": "^3.11.5",
+    "cheerio": "^1.0.0",
+    "got-scraping": "^4.0.6",
+    "xlsx": "^0.18.5"
+  },
+  "author": "studioscraper.it",
+  "license": "MIT"
+}

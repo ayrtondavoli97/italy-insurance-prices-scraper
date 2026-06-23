@@ -1,0 +1,16 @@
+{
+  "actorSpecification": 1,
+  "name": "italy-insurance-prices-scraper",
+  "title": "Italy Insurance Prices (RC Auto) by Province & Region",
+  "description": "Structured dataset of Italian motor-liability (RC Auto) insurance prices by province, region and macro-area, built from official IVASS IPER statistical data.",
+  "version": "1.0",
+  "buildTag": "latest",
+  "meta": {
+    "templateId": "node-crawlee"
+  },
+  "input": "./INPUT_SCHEMA.json",
+  "dockerfile": "../Dockerfile",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  }
+}
